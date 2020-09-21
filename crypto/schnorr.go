@@ -4,6 +4,7 @@ package crypto
 import (
 	"crypto/ecdsa"
 	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"github.com/btcsuite/btcd/btcec"
@@ -26,10 +27,15 @@ func GenerateKeyPair() (Px, Py, pk *big.Int) {
 
 func PointMarshal(Px, Py *big.Int) (ret []byte) {
 	ret = []byte{}
-	ret = append(ret, Px.Bytes()...)
-	ret = append(ret, Py.Bytes()...)
+	bPx, bPy := [32]byte{}, [32]byte{}
+	copy(bPx[32-len(Px.Bytes()):], Px.Bytes())
+	copy(bPy[32-len(Py.Bytes()):], Py.Bytes())
+
+	ret = append(ret, bPx[:]...)
+	ret = append(ret, bPy[:]...)
 
 	return ret
+
 }
 
 func getJacobiResult(Ry, r *big.Int) *big.Int {
@@ -44,7 +50,10 @@ func PointUnmarshal(src []byte) (Px, Py *big.Int, err error) {
 	bPy := src[32:]
 
 	if len(bPx) != 32 || len(bPy) != 32 {
-		return nil, nil, errors.New("Point Unmarshal Error because of length")
+		return nil, nil,
+			errors.New(fmt.Sprintf("Point Unmarshal Error because of length, with bPx = %d, bPy = %d",
+				len(bPx), len(bPy)))
+
 	}
 
 	Px = big.NewInt(0).SetBytes(bPx)
@@ -90,18 +99,31 @@ func Verify(Px, Py, Rx, s *big.Int, message []byte) (bool, error) {
 	hashedNum := getHash(Px, Py, Rx, message)
 
 	sGx, sGy := Curve.ScalarBaseMult(s.Bytes())
+	fmt.Println(fmt.Sprintf("[verify] sGx = %s", hex.EncodeToString(sGx.Bytes())))
+	fmt.Println(fmt.Sprintf("[verify] sGx = %s", hex.EncodeToString(sGy.Bytes())))
+
 	ePx, ePy := Curve.ScalarMult(Px, Py, hashedNum.Bytes())
 	ePy.Sub(Curve.P, ePy)
+	fmt.Println(fmt.Sprintf("[verify] ePx = %s", hex.EncodeToString(ePx.Bytes())))
+	fmt.Println(fmt.Sprintf("[verify] ePy = %s", hex.EncodeToString(ePy.Bytes())))
 
 	RxCalc, RyCalc := Curve.Add(sGx, sGy, ePx, ePy)
-	if (RxCalc.Sign() == 0 && RyCalc.Sign() == 0) || big.Jacobi(RyCalc, Curve.P) != 1 || RxCalc.Cmp(Rx) != 0{
-		return false, errors.New("signature verification failed")
+	fmt.Println(fmt.Sprintf("[verify] rx = %s", hex.EncodeToString(RxCalc.Bytes())))
+	fmt.Println(fmt.Sprintf("[verify] ry = %s", hex.EncodeToString(RyCalc.Bytes())))
+
+	if RxCalc.Sign() == 0 && RyCalc.Sign() == 0 {
+		return false, errors.New("signature verification failed, get zero Rx and Ry")
+	} else if big.Jacobi(RyCalc, Curve.P) != 1 {
+		return false, errors.New("signature verification failed, Jacobi verification fail")
+	} else if RxCalc.Cmp(Rx) != 0 {
+		return false, errors.New("signature verification failed, Rx verification fail")
 	}
+
 	return true, nil
 }
 
-func VerifyMsg(signature [64]byte, message []byte, Px,Py *big.Int)(bool, error){
+func VerifyMsg(signature [64]byte, message []byte, Px, Py *big.Int) (bool, error) {
 	s := new(big.Int).SetBytes(signature[32:])
 	Rx := new(big.Int).SetBytes(signature[:32])
-	return Verify(Px,Py,Rx,s,message)
+	return Verify(Px, Py, Rx, s, message)
 }

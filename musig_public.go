@@ -1,116 +1,57 @@
-package crypto
+package tld_chain
 
 import (
+	"crypto/ecdsa"
+	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
-	"github.com/cloudflare/cfssl/scan/crypto/sha256"
-	"github.com/pkg/errors"
+	"github.com/btcsuite/btcd/btcec"
 	"math/big"
 )
 
-//Hash(R_i) in round one
-func getHashRi(Rx, Ry *big.Int) (string, error) {
-	bRx := Rx.Bytes()
-	bRy := Ry.Bytes()
-	if len(bRx) != 32 || len(bRy) != 32 {
-		return "", errors.New("length of R not correct")
-	}
+var (
+	Curve = btcec.S256()
+)
 
-	payload := append(bRx, bRy...)
-	hashed := sha256.Sum256(payload)
-	return string(hex.EncodeToString(hashed[:])), nil
-}
-
-func verifyHashRi(Rx, Ry *big.Int, hashedRi string) (bool, error) {
-	verifyHash, err := getHashRi(Rx, Ry)
+func GenerateKeyPair() (Px, Py, pk *big.Int) {
+	key, err := ecdsa.GenerateKey(Curve, rand.Reader)
 	if err != nil {
-		return false, err
+		fmt.Println(err)
 	}
-	if verifyHash != hashedRi {
-		return false, errors.New("hash not match")
-	}
-	return true, nil
+	return key.X, key.Y, key.D
 }
 
-//challenge factor pk_i*Hash(L,P_i)
-func getChallengeFactor(Points [][]byte, pubKey []byte, pk *big.Int) *big.Int {
-	var L []byte
-	for _, point := range Points {
-		L = append(L, point...)
-	}
+func PointMarshal(Px, Py *big.Int) (ret []byte) {
+	ret = []byte{}
+	bPx, bPy := [32]byte{}, [32]byte{}
+	copy(bPx[32-len(Px.Bytes()):], Px.Bytes())
+	copy(bPy[32-len(Py.Bytes()):], Py.Bytes())
 
-	var LPi []byte
-	copy(LPi, L)
-	LPi = append(LPi, pubKey...)
-	hashed := sha256.Sum256(LPi)
-	i := new(big.Int).SetBytes(hashed[:])
-	i.Mul(i, pk)
-	i.Mod(i, Curve.N)
-	return i
+	ret = append(ret, bPx[:]...)
+	ret = append(ret, bPy[:]...)
+
+	return ret
+
 }
 
-//H(L,Pi)
-func getChallengeFactorByIndex(Points [][]byte, index int) *big.Int {
-	var L []byte
-	for _, point := range Points {
-		L = append(L, point...)
+func PointUnmarshal(src []byte) (Px, Py *big.Int, err error) {
+	bPx := src[:32]
+	bPy := src[32:]
+
+	if len(bPx) != 32 || len(bPy) != 32 {
+		return nil, nil,
+			errors.New(fmt.Sprintf("Point Unmarshal Error because of length, with bPx = %d, bPy = %d",
+				len(bPx), len(bPy)))
+
 	}
 
-	var LPi []byte
-	copy(LPi, L)
-	LPi = append(LPi, Points[index]...)
-	hashed := sha256.Sum256(LPi)
-	i := new(big.Int).SetBytes(hashed[:])
-	//	i.Mul(i, pk)
-	i.Mod(i, Curve.N)
-	return i
+	Px = big.NewInt(0).SetBytes(bPx)
+	Py = big.NewInt(0).SetBytes(bPy)
+
+	return Px, Py, nil
 }
-
-func getAggregatePoints(points [][]byte) (aggPx, aggPy *big.Int, err error) {
-	aggPx, aggPy = new(big.Int), new(big.Int)
-	for _, point := range points {
-		Px, Py, err := PointUnmarshal(point)
-		if err != nil {
-			return nil, nil, err
-		}
-		aggPx, aggPy = Curve.Add(aggPx, aggPy, Px, Py)
-	}
-	return aggPx, aggPy, nil
-}
-
-func generateMemberSignature(pkChallengeFactor, r, aggRx, aggRy, aggPx, aggPy *big.Int, message []byte) (s *big.Int) {
-	r0 := r
-	if big.Jacobi(aggRy, Curve.P) != 1 {
-		aggRy.Sub(Curve.P, aggRy)
-		r0.Sub(Curve.N, r0)
-	}
-
-	hashedNum := getHash(aggPx, aggPy, aggRx, message)
-	hashedNum.Mul(hashedNum, pkChallengeFactor)
-
-	r0.Add(r0, hashedNum)
-	r0.Mod(r0, Curve.N)
-
-	return r0
-}
-
-func aggreateMemberSignature(signs []*big.Int) (aggS *big.Int) {
-	aggS = new(big.Int)
-
-	for i := 0; i < len(signs); i++ {
-		s := signs[i]
-		aggS.Add(aggS, s)
-	}
-	aggS.Mod(aggS, Curve.N)
-	return aggS
-}
-
-//func verify(aggRx, aggRy, aggPx, aggPy, s *big.Int, message []byte) {
-
-//	hashedNum := getHash(aggPx, aggPy, aggRx, message)
-
-//	verX, verY := Curve.ScalarMult()
-//}
 
 func getChallengeFactorList(Points [][]byte) []*big.Int {
 	var L []byte
@@ -132,7 +73,16 @@ func getChallengeFactorList(Points [][]byte) []*big.Int {
 	return challengeFactorList
 }
 
-func TempMusig() {
+func getHash(Px, Py, Rx *big.Int, message []byte) *big.Int {
+	payload := append(Px.Bytes(), Py.Bytes()...)
+	payload = append(payload, Rx.Bytes()...)
+	payload = append(payload, message...)
+	hashed := sha256.Sum256(payload)
+	i := new(big.Int).SetBytes(hashed[:])
+	return i.Mod(i, Curve.N)
+}
+
+func SimpleMusigTest() {
 	var privateKeyList []*big.Int
 	var privateRandomList []*big.Int
 
@@ -239,5 +189,10 @@ func TempMusig() {
 	fmt.Println(hex.EncodeToString(aggRx.Bytes()))
 	fmt.Println(hex.EncodeToString(cRx.Bytes()))
 	fmt.Println(hex.EncodeToString(cRy.Bytes()))
-//	fmt.Println(Verify(aggMemPx, aggMemPy, aggRx, s, message))
+
+	if (cRx.Sign() == 0 && cRy.Sign() == 0) || big.Jacobi(cRy, Curve.P) != 1 || cRx.Cmp(aggRx) != 0 {
+		fmt.Println("verification failed")
+	} else {
+		fmt.Println("verification succeeded")
+	}
 }
