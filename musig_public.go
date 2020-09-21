@@ -166,9 +166,9 @@ func SimpleMusigTest() {
 	}
 
 	//bug 1. 曾将aggRy的变形部分写进了循环，导致本来只需要变形一次，却变成了10次，很危险的bug，因为如果加密主体数量是奇数可能这个bug会被隐藏
-	if big.Jacobi(aggRy, Curve.P) != 1 {
-		aggRy.Sub(Curve.P, aggRy)
-	}
+//	if big.Jacobi(aggRy, Curve.P) != 1 {
+//		aggRy.Sub(Curve.P, aggRy)
+//	}
 
 	/////////////////Verify////////////////////
 

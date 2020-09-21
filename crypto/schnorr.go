@@ -4,11 +4,11 @@ package crypto
 import (
 	"crypto/ecdsa"
 	"crypto/rand"
-	"encoding/hex"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"github.com/btcsuite/btcd/btcec"
-	"github.com/cloudflare/cfssl/scan/crypto/sha256"
+
 	"math/big"
 )
 
@@ -99,17 +99,11 @@ func Verify(Px, Py, Rx, s *big.Int, message []byte) (bool, error) {
 	hashedNum := getHash(Px, Py, Rx, message)
 
 	sGx, sGy := Curve.ScalarBaseMult(s.Bytes())
-	fmt.Println(fmt.Sprintf("[verify] sGx = %s", hex.EncodeToString(sGx.Bytes())))
-	fmt.Println(fmt.Sprintf("[verify] sGx = %s", hex.EncodeToString(sGy.Bytes())))
 
 	ePx, ePy := Curve.ScalarMult(Px, Py, hashedNum.Bytes())
 	ePy.Sub(Curve.P, ePy)
-	fmt.Println(fmt.Sprintf("[verify] ePx = %s", hex.EncodeToString(ePx.Bytes())))
-	fmt.Println(fmt.Sprintf("[verify] ePy = %s", hex.EncodeToString(ePy.Bytes())))
 
 	RxCalc, RyCalc := Curve.Add(sGx, sGy, ePx, ePy)
-	fmt.Println(fmt.Sprintf("[verify] rx = %s", hex.EncodeToString(RxCalc.Bytes())))
-	fmt.Println(fmt.Sprintf("[verify] ry = %s", hex.EncodeToString(RyCalc.Bytes())))
 
 	if RxCalc.Sign() == 0 && RyCalc.Sign() == 0 {
 		return false, errors.New("signature verification failed, get zero Rx and Ry")
