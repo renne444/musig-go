@@ -1,4 +1,4 @@
-package tld_chain
+package musig_go
 
 import "testing"
 

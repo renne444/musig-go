@@ -1,4 +1,4 @@
-package tld_chain
+package musig_go
 
 import (
 	"crypto/ecdsa"
@@ -24,6 +24,8 @@ func GenerateKeyPair() (Px, Py, pk *big.Int) {
 }
 
 func PointMarshal(Px, Py *big.Int) (ret []byte) {
+
+	//bug 3. 曾没有考虑点的长度，没有将每个点的长度定死在32，导致有概率Px或Py太小位数小于32，从而导致解码的时候失败。
 	ret = []byte{}
 	bPx, bPy := [32]byte{}, [32]byte{}
 	copy(bPx[32-len(Px.Bytes()):], Px.Bytes())
